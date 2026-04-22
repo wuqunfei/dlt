@@ -8,6 +8,11 @@ keywords: [aws glue, iceberg, duckdb, csv, lakehouse, filesystem]
 Write data into Iceberg tables registered in AWS Glue catalog using dlt's
 filesystem destination with `iceberg_catalog_type = "glue"`.
 
+Install dependencies:
+```sh
+pip install "dlt[filesystem,pyiceberg-glue]"
+```
+
 We'll learn:
 
 - How to configure the filesystem destination to use AWS Glue as the Iceberg catalog.
