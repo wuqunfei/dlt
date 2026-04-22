@@ -159,8 +159,8 @@ class PyicebergCatalogConfig(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     type: str = Field(..., description="Iceberg catalog type")  # noqa
-    uri: Optional[str] = Field(None, description="Iceberg catalog URI (not required for glue)")
-    warehouse: Optional[str] = Field(None, description="Warehouse name")
+    uri: str = Field(..., description="Iceberg catalog URI")
+    warehouse: str = Field(..., description="Warehouse name")
 
 
 @configspec
@@ -312,11 +312,12 @@ def _load_catalog_from_config(
     """
     from pyiceberg.catalog import load_catalog
 
-    # Validate config
-    PyicebergCatalogConfig(**config_dict)
-
     if not config_dict:
         raise CatalogNotFoundError("No configuration dictionary provided")
+
+    # validate config (skip for glue which doesn't require uri/warehouse)
+    if config_dict.get("type") != "glue":
+        PyicebergCatalogConfig(**config_dict)
 
     logger.info(f"Loading catalog '{catalog_name}' from provided configuration")
 
@@ -364,7 +365,8 @@ def get_catalog(
         iceberg_catalog_name: Name of the catalog (default: "default")
         iceberg_catalog_type: Type of catalog ('sql', 'rest', or 'glue')
         iceberg_catalog_config: Optional dictionary with complete catalog configuration
-        credentials: Optional filesystem credentials for S3/Azure/GCS access and Glue catalog.
+        credentials: Optional filesystem credentials. Used for Glue catalog and backward
+            compatibility with in-memory SQLite catalog.
 
     Returns:
         IcebergCatalog instance
@@ -381,6 +383,10 @@ def get_catalog(
         # Load from .pyiceberg.yaml
         catalog = get_catalog('my_catalog', iceberg_catalog_type='sql')
 
+        # Load from environment variables
+        # (set PYICEBERG_CATALOG_TYPE, PYICEBERG_CATALOG_URI, etc.)
+        catalog = get_catalog('my_catalog', iceberg_catalog_type='rest')
+
     """
     logger.info(f"Attempting to load Iceberg catalog: {iceberg_catalog_name}")
 
@@ -394,9 +400,7 @@ def get_catalog(
     # Priority 1: Explicit config dictionary (most specific and comes from secrets.toml)
     if iceberg_catalog_config:
         try:
-            return _load_catalog_from_config(
-                iceberg_catalog_name, iceberg_catalog_config, credentials
-            )
+            return _load_catalog_from_config(iceberg_catalog_name, iceberg_catalog_config)
         except CatalogNotFoundError as e:
             logger.warning(f"Failed to load catalog from config dict: {e}")
 
