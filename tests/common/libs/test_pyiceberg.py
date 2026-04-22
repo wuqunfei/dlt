@@ -110,7 +110,7 @@ def catalog_config(request):
 def test_get_catalog_rejects_unsupported_types():
     """Should reject unsupported catalog types."""
     with pytest.raises(ValueError, match="Unsupported catalog type"):
-        get_catalog("my_cat", iceberg_catalog_type="glue")
+        get_catalog("my_cat", iceberg_catalog_type="hive")
 
 
 def test_persistence_of_sqlite_catalog(tmp_path):
