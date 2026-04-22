@@ -159,8 +159,8 @@ class PyicebergCatalogConfig(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     type: str = Field(..., description="Iceberg catalog type")  # noqa
-    uri: str = Field(..., description="Iceberg catalog URI")
-    warehouse: str = Field(..., description="Warehouse name")
+    uri: Optional[str] = Field(None, description="Iceberg catalog URI")
+    warehouse: Optional[str] = Field(None, description="Warehouse name")
 
 
 @configspec
@@ -315,9 +315,7 @@ def _load_catalog_from_config(
     if not config_dict:
         raise CatalogNotFoundError("No configuration dictionary provided")
 
-    # validate config (skip for glue which doesn't require uri/warehouse)
-    if config_dict.get("type") != "glue":
-        PyicebergCatalogConfig(**config_dict)
+    PyicebergCatalogConfig(**config_dict)
 
     logger.info(f"Loading catalog '{catalog_name}' from provided configuration")
 
