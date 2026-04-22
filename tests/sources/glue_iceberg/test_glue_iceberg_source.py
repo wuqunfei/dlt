@@ -69,3 +69,19 @@ def test_glue_iceberg_table_resource(mock_glue_connection):
         table="orders",
     )
     assert resource.name == "orders"
+
+
+def test_glue_iceberg_source_propagates_connection_error():
+    with patch("dlt.sources.glue_iceberg.helpers.duckdb") as mock_duckdb:
+        conn = MagicMock()
+        mock_duckdb.connect.return_value = conn
+        conn.execute.side_effect = Exception("connection refused")
+
+        from dlt.sources.glue_iceberg import glue_iceberg
+
+        with pytest.raises(Exception, match="connection refused"):
+            glue_iceberg(
+                aws_account_id="123456789012",
+                region="us-east-2",
+                namespace="analytics",
+            )
