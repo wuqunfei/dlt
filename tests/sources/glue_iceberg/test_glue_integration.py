@@ -1,12 +1,13 @@
 """Integration test: write CSV to Glue Iceberg table, then read back with DuckDB.
 
 Requires these environment variables:
-    AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION,
+    AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_ACCOUNT_ID, AWS_REGION,
     GLUE_DATABASE, GLUE_BUCKET_URL, GLUE_TABLE_NAME
 
 Run with:
-    AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... AWS_REGION=eu-north-1 \
-    GLUE_DATABASE=mydb GLUE_BUCKET_URL=s3://my-bucket/warehouse/ GLUE_TABLE_NAME=my_table \
+    AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... AWS_ACCOUNT_ID=... \
+    AWS_REGION=eu-north-1 GLUE_DATABASE=mydb \
+    GLUE_BUCKET_URL=s3://my-bucket/warehouse/ GLUE_TABLE_NAME=my_table \
     uv run pytest tests/sources/glue_iceberg/test_glue_integration.py -v -s
 """
 
@@ -18,8 +19,12 @@ import pytest
 
 # skip if AWS credentials not configured
 pytestmark = pytest.mark.skipif(
-    not os.environ.get("AWS_ACCESS_KEY_ID") or not os.environ.get("AWS_SECRET_ACCESS_KEY"),
-    reason="AWS credentials not set (need AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY)",
+    not all(
+        os.environ.get(k) for k in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_ACCOUNT_ID")
+    ),
+    reason=(
+        "AWS credentials not set (need AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_ACCOUNT_ID)"
+    ),
 )
 
 CSV_PATH = Path(__file__).parent / "test_data.csv"
@@ -90,9 +95,7 @@ def test_csv_to_glue_iceberg_and_read_back():
         )
     """)
 
-    import boto3
-
-    account_id = boto3.client("sts", region_name=AWS_REGION).get_caller_identity()["Account"]
+    account_id = os.environ["AWS_ACCOUNT_ID"]
     conn.execute(f"""
         ATTACH '{account_id}' AS glue_catalog (
             TYPE iceberg,
@@ -100,9 +103,7 @@ def test_csv_to_glue_iceberg_and_read_back():
         )
     """)
 
-    rows = conn.execute(
-        f"SELECT * FROM glue_catalog.{GLUE_DATABASE}.{TABLE_NAME}"
-    ).fetchall()
+    rows = conn.execute(f"SELECT * FROM glue_catalog.{GLUE_DATABASE}.{TABLE_NAME}").fetchall()
     columns = [desc[0] for desc in conn.description]
     print(f"\nRead back {len(rows)} rows from Glue:")
     print(f"Columns: {columns}")
