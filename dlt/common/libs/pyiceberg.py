@@ -159,8 +159,8 @@ class PyicebergCatalogConfig(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     type: str = Field(..., description="Iceberg catalog type")  # noqa
-    uri: str = Field(..., description="Iceberg catalog URI")
-    warehouse: str = Field(..., description="Warehouse name")
+    uri: Optional[str] = Field(None, description="Iceberg catalog URI (not required for glue)")
+    warehouse: Optional[str] = Field(None, description="Warehouse name")
 
 
 @configspec
@@ -189,6 +189,11 @@ class IcebergConfig(BaseConfiguration):
             'type': 'sql',
             'uri': 'postgresql://user:pass@localhost/catalog'
         }
+
+    For Glue catalog, no iceberg_catalog_config is needed. Just set:
+        iceberg_catalog_type = "glue"
+    AWS credentials are picked up from the filesystem destination credentials
+    or the standard AWS credential chain.
 
     Example for secrets.toml:
         [iceberg_catalog]
@@ -321,6 +326,26 @@ def _load_catalog_from_config(
     return load_catalog(catalog_name, **config_dict)
 
 
+def _load_glue_catalog(
+    catalog_name: str,
+    credentials: Optional[FileSystemCredentials] = None,
+) -> "IcebergCatalog":
+    """Load an Iceberg catalog backed by AWS Glue.
+
+    Builds a Glue catalog config from AWS credentials. PyIceberg's Glue
+    catalog uses boto3 under the hood, so credentials can also come from
+    the standard AWS credential chain (env vars, ~/.aws/credentials, etc.).
+    """
+    from pyiceberg.catalog import load_catalog
+
+    config: Dict[str, Any] = {"type": "glue"}
+    if credentials:
+        config.update(_get_fileio_config(credentials))
+
+    logger.info(f"Loading Glue catalog '{catalog_name}'")
+    return load_catalog(catalog_name, **config)
+
+
 @with_config(spec=IcebergConfig, sections="iceberg_catalog")
 def get_catalog(
     iceberg_catalog_name: str = "default",
@@ -337,9 +362,9 @@ def get_catalog(
 
     Args:
         iceberg_catalog_name: Name of the catalog (default: "default")
-        iceberg_catalog_type: Type of catalog ('sql' or 'rest')
+        iceberg_catalog_type: Type of catalog ('sql', 'rest', or 'glue')
         iceberg_catalog_config: Optional dictionary with complete catalog configuration
-        credentials: Optional filesystem credentials. This is ONLY used for backward compatibility with in-memory SQLite catalog.
+        credentials: Optional filesystem credentials for S3/Azure/GCS access and Glue catalog.
 
     Returns:
         IcebergCatalog instance
@@ -350,12 +375,11 @@ def get_catalog(
         config = {'type': 'rest', 'uri': 'https://...', 'warehouse': 'wh'}
         catalog = get_catalog('my_catalog', iceberg_catalog_type='rest', iceberg_catalog_config=config)
 
+        # Load Glue catalog (credentials from AWS credential chain)
+        catalog = get_catalog('my_catalog', iceberg_catalog_type='glue')
+
         # Load from .pyiceberg.yaml
         catalog = get_catalog('my_catalog', iceberg_catalog_type='sql')
-
-        # Load from environment variables
-        # (set PYICEBERG_CATALOG_TYPE, PYICEBERG_CATALOG_URI, etc.)
-        catalog = get_catalog('my_catalog', iceberg_catalog_type='rest')
 
     """
     logger.info(f"Attempting to load Iceberg catalog: {iceberg_catalog_name}")
@@ -364,24 +388,29 @@ def get_catalog(
     supported_catalog_types = ["sql", "rest", "glue"]
     if iceberg_catalog_type not in supported_catalog_types:
         raise ValueError(
-            f"Unsupported catalog type: {iceberg_catalog_type}."
-            " Use 'sql', 'rest', or 'glue'."
+            f"Unsupported catalog type: {iceberg_catalog_type}. Use 'sql', 'rest', or 'glue'."
         )
 
     # Priority 1: Explicit config dictionary (most specific and comes from secrets.toml)
     if iceberg_catalog_config:
         try:
-            return _load_catalog_from_config(iceberg_catalog_name, iceberg_catalog_config)
+            return _load_catalog_from_config(
+                iceberg_catalog_name, iceberg_catalog_config, credentials
+            )
         except CatalogNotFoundError as e:
             logger.warning(f"Failed to load catalog from config dict: {e}")
 
-    # Priority 2: .pyiceberg.yaml file (PyIceberg standard)
+    # Priority 2: Glue catalog from AWS credentials (no explicit config needed)
+    if iceberg_catalog_type == "glue":
+        return _load_glue_catalog(iceberg_catalog_name, credentials)
+
+    # Priority 3: .pyiceberg.yaml file (PyIceberg standard)
     try:
         return _load_catalog_from_pyiceberg(iceberg_catalog_name)
     except CatalogNotFoundError as e:
         logger.debug(f"Catalog not found in .pyiceberg.yaml: {e}")
 
-    # Priority 3: Fall back to in-memory SQLite (backward compatibility)
+    # Priority 4: Fall back to in-memory SQLite (backward compatibility)
     logger.info(
         "No catalog configuration found, using in-memory SQLite catalog (backward compatibility)"
     )
