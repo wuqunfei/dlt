@@ -25,6 +25,8 @@ config.toml:
 ```toml
 [destination.filesystem]
 bucket_url = "s3://atm-datalake/warehouse/"
+
+[iceberg_catalog]
 iceberg_catalog_type = "glue"
 ```
 
