@@ -361,9 +361,12 @@ def get_catalog(
     logger.info(f"Attempting to load Iceberg catalog: {iceberg_catalog_name}")
 
     # Validate catalog type
-    supported_catalog_types = ["sql", "rest"]
+    supported_catalog_types = ["sql", "rest", "glue"]
     if iceberg_catalog_type not in supported_catalog_types:
-        raise ValueError(f"Unsupported catalog type: {iceberg_catalog_type}. Use 'sql' or 'rest'.")
+        raise ValueError(
+            f"Unsupported catalog type: {iceberg_catalog_type}."
+            " Use 'sql', 'rest', or 'glue'."
+        )
 
     # Priority 1: Explicit config dictionary (most specific and comes from secrets.toml)
     if iceberg_catalog_config:
