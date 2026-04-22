@@ -40,7 +40,31 @@ region_name = "eu-north-1"
 
 """
 
+import csv
+from pathlib import Path
+from typing import Iterator
+
 import dlt
+
+
+def read_csv(path: str) -> Iterator[dict]:
+    """Read a CSV file and yield rows as typed dicts."""
+    with open(path, newline="") as f:
+        for row in csv.DictReader(f):
+            # cast numeric columns so dlt infers correct types
+            yield {k: _try_cast(v) for k, v in row.items()}
+
+
+def _try_cast(value: str):
+    """Try to cast string to int or float, otherwise return as-is."""
+    try:
+        return int(value)
+    except ValueError:
+        pass
+    try:
+        return float(value)
+    except ValueError:
+        return value
 
 
 def csv_to_glue_iceberg() -> None:
@@ -56,7 +80,11 @@ def csv_to_glue_iceberg() -> None:
         dataset_name="atm",
     )
 
-    data = dlt.resource(name="transactions").from_csv("transactions.csv")
+    data = dlt.resource(
+        read_csv("transactions.csv"),
+        name="transactions",
+        write_disposition="replace",
+    )
 
     load_info = pipeline.run(data, table_format="iceberg")
     print(load_info)
@@ -77,30 +105,46 @@ def csv_to_glue_then_query_with_duckdb() -> None:
         dataset_name="atm",
     )
 
-    data = dlt.resource(name="transactions").from_csv("transactions.csv")
+    data = dlt.resource(
+        read_csv("transactions.csv"),
+        name="transactions",
+        write_disposition="replace",
+    )
     load_info = pipeline.run(data, table_format="iceberg")
     print(load_info)
 
     # step 2: query with DuckDB via Glue catalog
+    # replace with your AWS account ID
+    aws_account_id = "123456789012"
+
     conn = duckdb.connect(":memory:")
     conn.execute("INSTALL iceberg; INSTALL aws; INSTALL httpfs")
     conn.execute("LOAD iceberg; LOAD aws; LOAD httpfs")
-    conn.execute("""
+    conn.execute(
+        """
         CREATE SECRET (
             TYPE S3,
             PROVIDER credential_chain,
             REGION 'eu-north-1'
         )
-    """)
-    conn.execute("""
-        ATTACH '123456789012' AS glue_catalog (
+    """
+    )
+    conn.execute(
+        f"""
+        ATTACH '{aws_account_id}' AS glue_catalog (
             TYPE iceberg,
             ENDPOINT_TYPE 'glue'
         )
-    """)
+    """
+    )
 
-    df = conn.execute("SELECT * FROM glue_catalog.atm.transactions").fetchdf()
-    print(df)
+    rows = conn.execute("SELECT * FROM glue_catalog.atm.transactions").fetchall()
+    columns = [desc[0] for desc in conn.description]
+    print(f"Columns: {columns}")
+    for row in rows:
+        print(row)
+
+    conn.close()
 
 
 def multiple_csv_to_glue() -> None:
@@ -111,8 +155,16 @@ def multiple_csv_to_glue() -> None:
         dataset_name="atm",
     )
 
-    orders = dlt.resource(name="orders").from_csv("orders.csv")
-    customers = dlt.resource(name="customers").from_csv("customers.csv")
+    orders = dlt.resource(
+        read_csv("orders.csv"),
+        name="orders",
+        write_disposition="replace",
+    )
+    customers = dlt.resource(
+        read_csv("customers.csv"),
+        name="customers",
+        write_disposition="replace",
+    )
 
     # creates atm.orders and atm.customers in Glue
     load_info = pipeline.run([orders, customers], table_format="iceberg")
