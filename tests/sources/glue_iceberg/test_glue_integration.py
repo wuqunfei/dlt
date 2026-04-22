@@ -1,8 +1,12 @@
 """Integration test: write CSV to Glue Iceberg table, then read back with DuckDB.
 
-Requires AWS credentials and access to the atm Glue database.
+Requires these environment variables:
+    AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION,
+    GLUE_DATABASE, GLUE_BUCKET_URL, GLUE_TABLE_NAME
+
 Run with:
-    AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... \
+    AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... AWS_REGION=eu-north-1 \
+    GLUE_DATABASE=mydb GLUE_BUCKET_URL=s3://my-bucket/warehouse/ GLUE_TABLE_NAME=my_table \
     uv run pytest tests/sources/glue_iceberg/test_glue_integration.py -v -s
 """
 
@@ -14,15 +18,15 @@ import pytest
 
 # skip if AWS credentials not configured
 pytestmark = pytest.mark.skipif(
-    not os.environ.get("AWS_ACCESS_KEY_ID"),
-    reason="AWS credentials not set",
+    not os.environ.get("AWS_ACCESS_KEY_ID") or not os.environ.get("AWS_SECRET_ACCESS_KEY"),
+    reason="AWS credentials not set (need AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY)",
 )
 
 CSV_PATH = Path(__file__).parent / "test_data.csv"
-GLUE_DATABASE = "atm"
-TABLE_NAME = "t_bar_1d_test_dlt"
-BUCKET_URL = "s3://atm-datalake/warehouse/"
-AWS_REGION = "eu-north-1"
+GLUE_DATABASE = os.environ.get("GLUE_DATABASE", "test_db")
+TABLE_NAME = os.environ.get("GLUE_TABLE_NAME", "test_iceberg_dlt")
+BUCKET_URL = os.environ.get("GLUE_BUCKET_URL", "s3://test-bucket/warehouse/")
+AWS_REGION = os.environ.get("AWS_REGION", "us-east-1")
 
 
 def _read_csv(path: Path):
