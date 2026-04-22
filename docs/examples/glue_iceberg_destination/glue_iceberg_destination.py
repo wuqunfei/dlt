@@ -41,6 +41,7 @@ region_name = "eu-north-1"
 """
 
 import csv
+import os
 from pathlib import Path
 from typing import Iterator
 
@@ -114,9 +115,7 @@ def csv_to_glue_then_query_with_duckdb() -> None:
     print(load_info)
 
     # step 2: query with DuckDB via Glue catalog
-    import boto3
-
-    aws_account_id = boto3.client("sts").get_caller_identity()["Account"]
+    aws_account_id = os.environ["AWS_ACCOUNT_ID"]
 
     conn = duckdb.connect(":memory:")
     conn.execute("INSTALL iceberg; INSTALL aws; INSTALL httpfs")
