@@ -114,8 +114,9 @@ def csv_to_glue_then_query_with_duckdb() -> None:
     print(load_info)
 
     # step 2: query with DuckDB via Glue catalog
-    # replace with your AWS account ID
-    aws_account_id = "123456789012"
+    import boto3
+
+    aws_account_id = boto3.client("sts").get_caller_identity()["Account"]
 
     conn = duckdb.connect(":memory:")
     conn.execute("INSTALL iceberg; INSTALL aws; INSTALL httpfs")
@@ -124,8 +125,7 @@ def csv_to_glue_then_query_with_duckdb() -> None:
         """
         CREATE SECRET (
             TYPE S3,
-            PROVIDER credential_chain,
-            REGION 'eu-north-1'
+            PROVIDER credential_chain
         )
     """
     )
